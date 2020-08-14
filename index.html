@@ -1,0 +1,183 @@
+<!-- <html>
+<head>
+      <script src="https://code.jquery.com/jquery-3.3.1.js"></script>
+      <script>
+
+            var fileData = null;
+
+            function loadFile() {
+                var preview = document.querySelector('file');
+                var file    = document.querySelector('input[type=file]').files[0];
+                var reader  = new FileReader();
+
+                reader.onloadend = function () {
+                    fileData = file;
+                }
+                if (file) {
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            function uploadFile() {
+                data = new FormData();
+                data.append('file', fileData);
+
+                $.ajax({
+                  url: "/post_pdf/",
+                  type: "POST",
+                  data: data,
+                  enctype: 'multipart/form-data',
+                  processData: false,
+                  contentType: false,
+                  success: function(data) {
+                      document.getElementById("result").innerHTML = 'Result: Upload successful';
+                  },
+                  error: function(e) {
+                      document.getElementById("result").innerHTML = 'Result: Error occurred: ' + e.message;
+                  }
+                });
+            }
+
+      </script>
+</head>
+<body>
+<input type="file" onchange="loadFile()"><br>
+<button onclick="uploadFile()">Upload..</button>
+<div id='result'></div>
+</body>
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MediaCapture and Streams API</title>
+    <script src="https://code.jquery.com/jquery-3.3.1.js"></script>
+    <meta name="viewport" content="width=device-width">
+</head>
+<body>
+    <main>
+        
+        <p><button id="btnStart">START RECORDING</button><br/>
+        <button id="btnStop">STOP RECORDING</button></p>
+        
+        <video controls></video>
+        
+        <!-- could save to canvas and do image manipulation and saving too -->
+    </main>    
+    <script>
+        
+        let constraintObj = { 
+            audio: false, 
+            video: { 
+                facingMode: "user", 
+                width: { min: 640, ideal: 1280, max: 1920 },
+                height: { min: 480, ideal: 720, max: 1080 } 
+            } 
+        }; 
+        // width: 1280, height: 720  -- preference only
+        // facingMode: {exact: "user"}
+        // facingMode: "environment"
+        
+        //handle older browsers that might implement getUserMedia in some way
+        if (navigator.mediaDevices === undefined) {
+            navigator.mediaDevices = {};
+            navigator.mediaDevices.getUserMedia = function(constraintObj) {
+                let getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+                console.log(getUserMedia);
+                if (!getUserMedia) {
+                    return Promise.reject(new Error('getUserMedia is not implemented in this browser'));
+                }
+                return new Promise(function(resolve, reject) {
+                    getUserMedia.call(navigator, constraintObj, resolve, reject);
+                });
+            }
+        }else{
+            navigator.mediaDevices.enumerateDevices()
+            .then(devices => {
+                devices.forEach(device=>{
+                    console.log(device.kind.toUpperCase(), device.label);
+                    //, device.deviceId
+                })
+            })
+            .catch(err=>{
+                console.log(err.name, err.message);
+            })
+        }
+
+        navigator.mediaDevices.getUserMedia(constraintObj)
+        .then(function(mediaStreamObj) {
+            //connect the media stream to the first video element
+            let video = document.querySelector('video');
+            if ("srcObject" in video) {
+                video.srcObject = mediaStreamObj;
+            } else {
+                //old version
+                video.src = window.URL.createObjectURL(mediaStreamObj);
+            }
+            
+            video.onloadedmetadata = function(ev) {
+                //show in the video element what is being captured by the webcam
+                video.play();
+            };
+            
+            //add listeners for saving video/audio
+            let start = document.getElementById('btnStart');
+            let stop = document.getElementById('btnStop');
+            let vidSave = document.getElementById('vid2');
+            let mediaRecorder = new MediaRecorder(mediaStreamObj);
+            let chunks = [];
+            
+            start.addEventListener('click', (ev)=>{
+                mediaRecorder.start();
+                console.log(mediaRecorder.state);
+            })
+            stop.addEventListener('click', (ev)=>{
+                mediaRecorder.stop();
+                console.log(mediaRecorder.state);
+            });
+            mediaRecorder.ondataavailable = function(ev) {
+                chunks.push(ev.data);
+            }
+            mediaRecorder.onstop = (ev)=>{
+                let blob = new Blob(chunks, { 'type' : 'video/mp4;' });
+                let form = new FormData();
+                form.append("blob", blob, "video.mp4");
+                $.ajax({
+                  url: "/video/",
+                  type: "POST",
+                  data: form,
+                  enctype: 'multipart/form-data',
+                  processData: false,
+                  contentType: false,
+                  success: function(data) {
+                      document.getElementById("result").innerHTML = 'Result: Upload successful';
+                  },
+                  error: function(e) {
+                      document.getElementById("result").innerHTML = 'Result: Error occurred: ' + e.message;
+                  }
+                });
+                chunks = [];
+                let videoURL = window.URL.createObjectURL(blob);
+                vidSave.src = videoURL;
+            }
+        })
+        .catch(function(err) { 
+            console.log(err.name, err.message); 
+        });
+        
+        /*********************************
+        getUserMedia returns a Promise
+        resolve - returns a MediaStream Object
+        reject returns one of the following errors
+        AbortError - generic unknown cause
+        NotAllowedError (SecurityError) - user rejected permissions
+        NotFoundError - missing media track
+        NotReadableError - user permissions given but hardware/OS error
+        OverconstrainedError - constraint video settings preventing
+        TypeError - audio: false, video: false
+        *********************************/
+    </script>
+</body>
+</html>
